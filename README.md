@@ -53,3 +53,58 @@ Multimodal emotion reasoning requires fine-grained alignment across visual, audi
 ---
 
 ## 🏗️ Architecture
+
+┌─────────────────────────────────────────────────────────────┐
+│                     Input Modalities                        │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────┐  │
+│  │   Video     │  │    Audio    │  │   Subtitle Text     │  │
+│  │ SigLIP-SO400│  │ HuBERT-L    │  │   (Original)        │  │
+│  │    (Frozen) │  │  (Frozen)   │  │                     │  │
+│  └──────┬──────┘  └──────┬──────┘  └─────────────────────┘  │
+│         │                │                                   │
+│         ▼                ▼                                   │
+│  ┌─────────────┐  ┌─────────────┐                           │
+│  │   Fa ∈ ℝ^(T×H) │  │   Fv ∈ ℝ^(T×H) │  (Temporal Features) │
+│  └──────┬──────┘  └──────┬──────┘                           │
+│         │                │                                   │
+│         └────────┬───────┘                                   │
+│                  ▼                                           │
+│         ┌─────────────────┐                                 │
+│         │   MTF Module    │  ← Mamba SSM + Cross-Modal Gate │
+│         │  • Linear Proj    │                                 │
+│         │  • Norm + Conv1D  │                                 │
+│         │  • SiLU Gating    │                                 │
+│         │  • SSM(Ha) ⊙ Hv │                                 │
+│         │  • SSM(Hv) ⊙ Ha │                                 │
+│         └────────┬────────┘                                 │
+│                  │                                           │
+│         ┌────────┴────────┐                                 │
+│         ▼                 ▼                                 │
+│    ┌─────────┐       ┌─────────┐                           │
+│    │   La    │       │   Lv    │  (Projected to LLM space)  │
+│    └────┬────┘       └────┬────┘                           │
+│         │                 │                                 │
+│         └────────┬────────┘                                 │
+│                  ▼                                           │
+│    ┌─────────────────────────────────┐                     │
+│    │   Structured Prompt + Subtitle    │                     │
+│    │         ↓                       │                     │
+│    │   Qwen2.5-7B-Instruct (LoRA)   │                     │
+│    │         ↓                       │                     │
+│    │   Emotion Reasoning + Description│                     │
+│    └─────────────────────────────────┘                     │
+└─────────────────────────────────────────────────────────────┘
+
+### MTF (Mamba-enhanced Temporal pre-Fusion) Detail
+
+The MTF module operates on temporal sequences before LLM tokenization:
+
+1. **Projection**: `F'a = Linear(Fa)`, `F'v = Linear(Fv)` → shared `ℝ^(T×d)`
+2. **Normalization & Expansion**: `xa = Linear(Norm(F'a))` → `ℝ^(T×2d)`
+3. **Short-term Dynamics**: `ha = SiLU(Conv1d(xa))`
+4. **Long-range Modeling**: `Ta = SSM(ha)` (Mamba selective state space)
+5. **Cross-Modal Gating**: `Ta = Ta ⊙ hv`, `Tv = Tv ⊙ ha`
+
+This preserves fine-grained emotional transitions (e.g., tone shifts, facial expression changes) that standard pooling would lose.
+
+---
