@@ -8,23 +8,6 @@
 &gt; This repository contains our official solution for the **MER2025 Multimodal Emotion Recognition with Description Generation (MER-DES)** track.  
 &gt; We introduce a novel framework combining **automated reasoning data augmentation** with a **Mamba-based temporal pre-fusion mechanism** to generate human-aligned, explainable emotion descriptions from video, audio, and text.
 
----
-
-## 📋 Table of Contents
-
-- [Overview](#overview)
-- [Key Features](#key-features)
-- [Architecture](#architecture)
-- [Installation](#installation)
-- [Data Preparation](#data-preparation)
-- [Training](#training)
-- [Evaluation](#evaluation)
-- [Results](#results)
-- [Qualitative Analysis](#qualitative-analysis)
-- [Citation](#citation)
-- [Acknowledgements](#acknowledgements)
-
----
 
 ## 🔍 Overview
 
@@ -54,47 +37,6 @@ Multimodal emotion reasoning requires fine-grained alignment across visual, audi
 
 ## 🏗️ Architecture
 
-┌─────────────────────────────────────────────────────────────┐
-│                     Input Modalities                        │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────┐  │
-│  │   Video     │  │    Audio    │  │   Subtitle Text     │  │
-│  │ SigLIP-SO400│  │ HuBERT-L    │  │   (Original)        │  │
-│  │    (Frozen) │  │  (Frozen)   │  │                     │  │
-│  └──────┬──────┘  └──────┬──────┘  └─────────────────────┘  │
-│         │                │                                   │
-│         ▼                ▼                                   │
-│  ┌─────────────┐  ┌─────────────┐                           │
-│  │   Fa ∈ ℝ^(T×H) │  │   Fv ∈ ℝ^(T×H) │  (Temporal Features) │
-│  └──────┬──────┘  └──────┬──────┘                           │
-│         │                │                                   │
-│         └────────┬───────┘                                   │
-│                  ▼                                           │
-│         ┌─────────────────┐                                 │
-│         │   MTF Module    │  ← Mamba SSM + Cross-Modal Gate │
-│         │  • Linear Proj    │                                 │
-│         │  • Norm + Conv1D  │                                 │
-│         │  • SiLU Gating    │                                 │
-│         │  • SSM(Ha) ⊙ Hv │                                 │
-│         │  • SSM(Hv) ⊙ Ha │                                 │
-│         └────────┬────────┘                                 │
-│                  │                                           │
-│         ┌────────┴────────┐                                 │
-│         ▼                 ▼                                 │
-│    ┌─────────┐       ┌─────────┐                           │
-│    │   La    │       │   Lv    │  (Projected to LLM space)  │
-│    └────┬────┘       └────┬────┘                           │
-│         │                 │                                 │
-│         └────────┬────────┘                                 │
-│                  ▼                                           │
-│    ┌─────────────────────────────────┐                     │
-│    │   Structured Prompt + Subtitle    │                     │
-│    │         ↓                       │                     │
-│    │   Qwen2.5-7B-Instruct (LoRA)   │                     │
-│    │         ↓                       │                     │
-│    │   Emotion Reasoning + Description│                     │
-│    └─────────────────────────────────┘                     │
-└─────────────────────────────────────────────────────────────┘
-
 ### MTF (Mamba-enhanced Temporal pre-Fusion) Detail
 
 The MTF module operates on temporal sequences before LLM tokenization:
@@ -107,4 +49,7 @@ The MTF module operates on temporal sequences before LLM tokenization:
 
 This preserves fine-grained emotional transitions (e.g., tone shifts, facial expression changes) that standard pooling would lose.
 
----
+bash 
+```
+CUDA_VISIBLE_DEVICES=1 python -u inference_hybird.py --zeroshot --dataset='MER2025OV' --outside_user_message="please consider the following points: observe facial expressions and body movements, evaluate speech rate, tone, and volume, and analyze what the character says. Finally, infer the person's emotional state and provide your reasoning process." --cfg-path=train_configs/msa_outputhybird_bestsetup_bestfusion_frame_lz.yaml --options "inference.test_epoch=5" "inference.base_root=output/results-description"
+python ovlabel_extraction.py
